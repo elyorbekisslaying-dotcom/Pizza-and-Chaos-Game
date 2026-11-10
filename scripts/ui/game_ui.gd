@@ -19,6 +19,7 @@ var next_label: Label
 var height_label: Label
 var stability_bar: ProgressBar
 var stability_label: Label
+var stability_fill: StyleBoxFlat
 var preview: IngredientView
 var result_title: Label
 var result_stats: Label
@@ -59,6 +60,10 @@ func update_hud(stats: Dictionary) -> void:
 	var stability := float(stats.get("stability", 1.0))
 	stability_bar.value = stability * 100.0
 	stability_label.text = "BALANCE  %d%%" % int(stability * 100.0)
+	if stability > 0.58:
+		stability_fill.bg_color = Color("59a06a").lerp(Color("e3a83f"), (1.0 - stability) / 0.42)
+	else:
+		stability_fill.bg_color = Color("e3a83f").lerp(Color("ca493b"), (0.58 - stability) / 0.58)
 	if preview != null:
 		preview.setup(_ingredient_id_from_label(ingredient_label.text), true)
 
@@ -133,13 +138,13 @@ func _build_ui() -> void:
 	stability_bar.max_value = 100
 	stability_bar.value = 100
 	stability_bar.show_percentage = false
-	var fill := StyleBoxFlat.new()
-	fill.bg_color = Color("59a06a")
-	fill.corner_radius_top_left = 7
-	fill.corner_radius_top_right = 7
-	fill.corner_radius_bottom_left = 7
-	fill.corner_radius_bottom_right = 7
-	stability_bar.add_theme_stylebox_override("fill", fill)
+	stability_fill = StyleBoxFlat.new()
+	stability_fill.bg_color = Color("59a06a")
+	stability_fill.corner_radius_top_left = 7
+	stability_fill.corner_radius_top_right = 7
+	stability_fill.corner_radius_bottom_left = 7
+	stability_fill.corner_radius_bottom_right = 7
+	stability_bar.add_theme_stylebox_override("fill", stability_fill)
 	var bg := StyleBoxFlat.new()
 	bg.bg_color = Color("ead9c2")
 	bg.corner_radius_top_left = 7

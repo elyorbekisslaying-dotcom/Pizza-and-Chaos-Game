@@ -13,6 +13,7 @@ const IngredientScene = preload("res://scenes/ingredient.tscn")
 const LAYER_SPACING := Balance.LAYER_SPACING
 const HORIZONTAL_LIMIT := Balance.HORIZONTAL_LIMIT
 const DROP_SPEED := Balance.DROP_SPEED
+const FALL_TOP_INSET := Balance.FALL_TOP_INSET
 
 @onready var camera: Camera2D = $Camera2D
 @onready var tower: Node2D = $Tower
@@ -30,8 +31,27 @@ var falling := false
 var game_active := false
 var current_stats: Dictionary = {}
 var best_stats: Dictionary = {}
-var reflow_tween: Tween
 var ambient_time := 0.0
+var last_fall_start := Vector2.ZERO
+var last_fall_target := Vector2.ZERO
+var active_drop_tween: Tween
+
+static func mouse_world_x_to_offset(mouse_world_x: float, centerline_x: float, limit: float = HORIZONTAL_LIMIT) -> float:
+	return clampf(mouse_world_x - centerline_x, -limit, limit)
+
+static func movement_direction(move_left: bool, move_right: bool) -> float:
+	return float(move_right) - float(move_left)
+
+static func move_offset(offset: float, direction: float, delta: float, speed: float, limit: float = HORIZONTAL_LIMIT) -> float:
+	return clampf(offset + direction * speed * delta, -limit, limit)
+
+static func calculate_fall_start_y(camera_y: float, viewport_height: float, top_inset: float = FALL_TOP_INSET) -> float:
+	return camera_y - viewport_height * 0.5 + top_inset
+
+static func should_drop_on_event(event: InputEvent) -> bool:
+	if event.is_action_pressed("drop_ingredient"):
+		return true
+	return event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT
 
 func _ready() -> void:
 	best_stats = SaveData.load_stats()
@@ -49,7 +69,7 @@ func start_round() -> void:
 	recipes_completed = 0
 	falling = false
 	game_active = true
-	camera.position = Vector2(0, 150)
+	camera.position = Vector2(0, -165.0)
 	camera.offset = Vector2.ZERO
 	tower.position = Vector2.ZERO
 	tower.rotation = 0.0
@@ -65,7 +85,7 @@ func show_menu_background() -> void:
 	offsets.clear()
 	ingredient_nodes.clear()
 	active_node = null
-	camera.position = Vector2(0, 150)
+	camera.position = Vector2(0, -165.0)
 	camera.offset = Vector2.ZERO
 	tower.position = Vector2.ZERO
 	tower.rotation = 0.0
@@ -81,11 +101,9 @@ func _process(delta: float) -> void:
 		var desired_camera_y := -float(offsets.size()) * LAYER_SPACING - 165.0
 		camera.position.y = lerpf(camera.position.y, desired_camera_y, 1.0 - exp(-delta * 4.0))
 		if active_node != null and not falling:
-			if Input.is_action_pressed("move_left"):
-				active_offset -= (245.0 + float(offsets.size()) * 4.0) * delta
-			if Input.is_action_pressed("move_right"):
-				active_offset += (245.0 + float(offsets.size()) * 4.0) * delta
-			active_offset = clampf(active_offset, -HORIZONTAL_LIMIT, HORIZONTAL_LIMIT)
+			if not offsets.is_empty():
+				var direction := movement_direction(Input.is_action_pressed("move_left"), Input.is_action_pressed("move_right"))
+				active_offset = move_offset(active_offset, direction, delta, 245.0 + float(offsets.size()) * 4.0)
 			_update_active_position()
 	queue_redraw()
 
@@ -93,11 +111,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not game_active or falling:
 		return
 	if event is InputEventMouseMotion:
-		var center := Bending.top_displacement(offsets)
-		active_offset = clampf(get_global_mouse_position().x - center, -HORIZONTAL_LIMIT, HORIZONTAL_LIMIT)
+		var center := Bending.centerline_at_height(offsets, offsets.size())
+		active_offset = 0.0 if offsets.is_empty() else mouse_world_x_to_offset(get_global_mouse_position().x, center)
 		_update_active_position()
 		return
-	if event.is_action_pressed("drop_ingredient") or (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed):
+	if should_drop_on_event(event):
 		_drop_active()
 		get_viewport().set_input_as_handled()
 
@@ -127,21 +145,28 @@ func _drop_active() -> void:
 	if active_node == null:
 		return
 	falling = true
-	var top_bend := Bending.top_displacement(offsets)
+	var top_bend := Bending.centerline_at_height(offsets, offsets.size())
+	if offsets.is_empty():
+		active_offset = 0.0
 	var x_target := top_bend + active_offset
 	var y_target := -float(offsets.size()) * LAYER_SPACING
-	var y_start := camera.position.y - 330.0
+	var viewport_height := get_viewport_rect().size.y
+	var y_start := calculate_fall_start_y(camera.position.y, viewport_height, FALL_TOP_INSET)
+	active_node.position = Vector2(x_target, y_start)
+	last_fall_start = active_node.position
+	last_fall_target = Vector2(x_target, y_target)
 	var duration := maxf(0.38, absf(y_start - y_target) / DROP_SPEED)
-	var tween := create_tween()
-	tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
-	tween.tween_property(active_node, "position", Vector2(x_target, y_target), duration)
-	tween.finished.connect(_land_active)
+	active_drop_tween = create_tween()
+	active_drop_tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	active_drop_tween.tween_property(active_node, "position:y", y_target, duration)
+	active_drop_tween.finished.connect(_land_active)
 
 func _land_active() -> void:
 	if not game_active or active_node == null:
 		return
 	var landed := active_node
 	active_node = null
+	falling = false
 	landed.preview = false
 	landed.queue_redraw()
 	var local_offset := active_offset
@@ -150,19 +175,12 @@ func _land_active() -> void:
 	var layer_index := offsets.size() - 1
 	var curve := Bending.centerline_curve(offsets)
 	var target := Vector2(curve[layer_index] + local_offset, -float(layer_index) * LAYER_SPACING)
-	landed.position = Vector2(Bending.top_displacement(offsets) + local_offset, target.y)
-	if reflow_tween and reflow_tween.is_running():
-		reflow_tween.kill()
-	reflow_tween = create_tween().set_parallel(true)
-	for i in range(ingredient_nodes.size()):
-		var node := ingredient_nodes[i]
-		var destination := Vector2(curve[i] + offsets[i], -float(i) * LAYER_SPACING)
-		reflow_tween.tween_property(node, "position", destination, 0.42).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	landed.position = target
 	var precision_bonus := maxi(0, 100 - int(absf(local_offset) * 0.72))
 	score += 50 + precision_bonus
 	current_stats["score"] = score
 	current_stats["height"] = offsets.size()
-	current_stats["stability"] = Bending.stability(offsets)
+	current_stats["stability"] = Bending.stability_report(offsets)["stability"]
 	placement_landed.emit(target)
 	var burst := Burst.new()
 	add_child(burst)
@@ -218,9 +236,10 @@ func _next_ingredient_label() -> String:
 func _update_active_position() -> void:
 	if active_node == null:
 		return
-	var center := Bending.top_displacement(offsets)
+	var center := Bending.centerline_at_height(offsets, offsets.size())
 	var preview_y := -float(offsets.size()) * LAYER_SPACING
-	active_node.position = Vector2(center + active_offset, preview_y)
+	var offset := 0.0 if offsets.is_empty() else active_offset
+	active_node.position = Vector2(center + offset, preview_y)
 
 func _finish_round() -> void:
 	game_active = false

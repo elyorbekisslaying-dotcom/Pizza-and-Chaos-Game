@@ -14,13 +14,11 @@ Move the active ingredient with **A/D**, the **left/right arrows**, or the mouse
 
 ## Tower math
 
-All ingredients have equal mass. After each landing, the game stores that ingredient’s signed horizontal offset from the active centerline. The bending module computes the accumulated moment
+All ingredients have equal unit mass. The bottom dough is fixed at `x = 0`. Each later placement stores its signed horizontal offset `d[i]` from the current centerline; its height weighted moment is `m[i] = d[i] × (i + 1)`. The section moment at height `i` is the prefix sum `S[i] = Σ m[j]` for `j ≤ i`.
 
-```text
-M = Σ(offset[i] × (i + 1))
-```
+The bend angle integrates each lower section moment by `0.00075 × S[i]` radians, clamped to ±1 radian. The horizontal centerline advances by `24 × tan(angle)` pixels per span and is visually clamped to ±86 pixels. Thus the base stays fixed, accumulated lower placements bend only the tower above them, and adding a new layer leaves prior layers in place.
 
-where `i + 1` is the layer’s height leverage. The centerline at normalized height `t` moves by `clamp(0.026 × M, -86, 86) × t²`. Each ingredient is drawn at its stored relative offset from that shared curve, so the stack bends as one structure. Stability is `clamp(1 - |M| / (178 × layer_count), 0, 1)`; a run ends when it reaches 8%.
+Stability evaluates every section’s support utilization `|S[i]| × (i + 1) / (250 + 125 × (i + 1)²)`, along with accumulated tilt and visible displacement. The meter is `clamp(1 - maximum utilization, 0, 1)`; the run ends when utilization reaches 1.0.
 
 The formulas live in `scripts/physics/tower_bending.gd` and can run without rendering or gameplay state.
 
@@ -45,4 +43,4 @@ godot --headless --path . --script tests/test_game_flow.gd
 
 ## Validation
 
-Validated with Godot 4.7 stable: editor import, headless project startup, 10 bending scenarios, and 5 recipe-flow scenarios pass. Windows and Web exports have not been built or tested.
+Validated with Godot 4.7 stable: editor import, headless project startup, 13 bending scenarios, and 30 gameplay/control/falling/camera/recipe scenarios pass. The gameplay suite executes actual tweened drops. A manual visual playthrough was unavailable because the Godot window was minimized. Windows and Web exports have not been built or tested.
