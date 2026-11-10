@@ -138,4 +138,3 @@ func _draw_ellipse(center: Vector2, radii: Vector2, color: Color) -> void:
 		var angle := TAU * float(i) / 36.0
 		points.append(center + Vector2(cos(angle) * radii.x, sin(angle) * radii.y))
 	draw_colored_polygon(points, color)
-
