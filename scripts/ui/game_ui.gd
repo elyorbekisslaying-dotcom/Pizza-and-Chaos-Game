@@ -5,7 +5,6 @@ signal retry_pressed
 signal menu_pressed
 
 const IngredientScene = preload("res://scenes/ingredient.tscn")
-const Recipes = preload("res://data/recipes.gd")
 
 var root_control: Control
 var menu_panel: PanelContainer
@@ -13,12 +12,10 @@ var hud_panel: PanelContainer
 var result_panel: PanelContainer
 var best_label: Label
 var score_label: Label
-var recipe_label: Label
+var stack_label: Label
 var ingredient_label: Label
 var next_label: Label
 var height_label: Label
-var stability_bar: ProgressBar
-var stability_label: Label
 var preview: IngredientView
 var result_title: Label
 var result_stats: Label
@@ -44,7 +41,7 @@ func show_results(stats: Dictionary) -> void:
 	hud_panel.visible = false
 	result_panel.visible = true
 	result_title.text = "PIZZA DISASTER!"
-	result_stats.text = "SCORE  %s\nHEIGHT  %d layers\nRECIPES  %d completed" % [_format_score(int(stats.get("score", 0))), int(stats.get("height", 0)), int(stats.get("recipes", 0))]
+	result_stats.text = "SCORE  %s\nHEIGHT  %d layers" % [_format_score(int(stats.get("score", 0))), int(stats.get("height", 0))]
 	result_feedback.text = str(stats.get("feedback", "Keep stacking!"))
 	result_record.text = "NEW RECORD!" if bool(stats.get("record_broken", false)) else "BEST SCORE  %s" % _format_score(int(stats.get("best_score", 0)))
 
@@ -52,15 +49,12 @@ func update_hud(stats: Dictionary) -> void:
 	if score_label == null:
 		return
 	score_label.text = _format_score(int(stats.get("score", 0)))
-	height_label.text = "HEIGHT  %02d    RECIPES  %d" % [int(stats.get("height", 0)), int(stats.get("recipes", 0))]
-	recipe_label.text = str(stats.get("recipe", "Pepperoni Classic"))
+	height_label.text = "HEIGHT  %02d LAYERS" % int(stats.get("height", 0))
+	stack_label.text = "PIZZA STACK"
 	ingredient_label.text = str(stats.get("ingredient", "Dough"))
-	next_label.text = "NEXT  %s" % str(stats.get("next_ingredient", "Tomato sauce"))
-	var stability := float(stats.get("stability", 1.0))
-	stability_bar.value = stability * 100.0
-	stability_label.text = "BALANCE  %d%%" % int(stability * 100.0)
+	next_label.text = "SPACE / CLICK TO DROP"
 	if preview != null:
-		preview.setup(_ingredient_id_from_label(ingredient_label.text), true)
+		preview.setup(str(stats.get("ingredient_id", "dough")), true)
 
 func _build_ui() -> void:
 	root_control = Control.new()
@@ -114,41 +108,19 @@ func _build_ui() -> void:
 	row.add_child(preview_box)
 	preview_box.custom_minimum_size.x = 105
 	preview = IngredientScene.instantiate() as IngredientView
+	preview.preview_only = true
 	preview.setup("dough", true)
 	preview.scale = Vector2(0.48, 0.48)
 	preview.position = Vector2(50, 23)
 	preview_box.add_child(preview)
 	ingredient_label = _label("Dough", 12, Color("725144"), HORIZONTAL_ALIGNMENT_CENTER)
 	preview_box.add_child(ingredient_label)
-	recipe_label = _label("Pepperoni Classic", 19, Color("6a342f"))
-	hud.add_child(recipe_label)
-	next_label = _label("NEXT  Tomato sauce", 13, Color("98705a"))
+	stack_label = _label("PIZZA STACK", 19, Color("6a342f"))
+	hud.add_child(stack_label)
+	next_label = _label("SPACE / CLICK TO DROP", 13, Color("98705a"))
 	hud.add_child(next_label)
-	height_label = _label("HEIGHT  00    RECIPES  0", 13, Color("765747"))
+	height_label = _label("HEIGHT  00 LAYERS", 13, Color("765747"))
 	hud.add_child(height_label)
-	stability_label = _label("BALANCE  100%", 12, Color("537853"))
-	hud.add_child(stability_label)
-	stability_bar = ProgressBar.new()
-	stability_bar.custom_minimum_size.y = 13
-	stability_bar.max_value = 100
-	stability_bar.value = 100
-	stability_bar.show_percentage = false
-	var fill := StyleBoxFlat.new()
-	fill.bg_color = Color("59a06a")
-	fill.corner_radius_top_left = 7
-	fill.corner_radius_top_right = 7
-	fill.corner_radius_bottom_left = 7
-	fill.corner_radius_bottom_right = 7
-	stability_bar.add_theme_stylebox_override("fill", fill)
-	var bg := StyleBoxFlat.new()
-	bg.bg_color = Color("ead9c2")
-	bg.corner_radius_top_left = 7
-	bg.corner_radius_top_right = 7
-	bg.corner_radius_bottom_left = 7
-	bg.corner_radius_bottom_right = 7
-	stability_bar.add_theme_stylebox_override("background", bg)
-	hud.add_child(stability_bar)
-
 	result_panel = _card(Vector2(440, 470))
 	result_panel.visible = false
 	root_control.add_child(result_panel)
@@ -159,7 +131,7 @@ func _build_ui() -> void:
 	results.add_child(_spacer(8))
 	result_title = _label("PIZZA DISASTER!", 36, Color("a73831"), HORIZONTAL_ALIGNMENT_CENTER)
 	results.add_child(result_title)
-	result_stats = _label("SCORE  0\nHEIGHT  0 layers\nRECIPES  0 completed", 19, Color("4b2630"), HORIZONTAL_ALIGNMENT_CENTER)
+	result_stats = _label("SCORE  0\nHEIGHT  0 layers", 19, Color("4b2630"), HORIZONTAL_ALIGNMENT_CENTER)
 	results.add_child(result_stats)
 	result_feedback = _label("A tower worthy of a chef.", 15, Color("795746"), HORIZONTAL_ALIGNMENT_CENTER)
 	results.add_child(result_feedback)
@@ -229,10 +201,3 @@ func _spacer(height: float) -> Control:
 
 func _format_score(value: int) -> String:
 	return "%06d" % value
-
-func _ingredient_id_from_label(label: String) -> String:
-	for key in ["dough", "sauce", "mozzarella", "pepperoni", "mushrooms", "pineapple", "ham", "sausage", "herbs", "extra_cheese"]:
-		var data := Recipes.ingredient_data(key)
-		if data["label"] == label:
-			return key
-	return "dough"

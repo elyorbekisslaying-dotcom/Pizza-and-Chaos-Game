@@ -1,48 +1,40 @@
 # Pizza and Chaos Game
 
-A colorful Godot 4 arcade game about stacking pizza ingredients while managing a deterministic, globally bending tower.
+A cartoon 2D arcade game about dropping toppings onto one dough base and building the tallest balanced pizza stack.
 
 ## Run
 
-Open this directory in Godot 4.7 or newer, then run the project. You can also launch it from a terminal:
+Open this directory in Godot 4.7 or newer, then run the project. From a terminal:
 
 ```sh
 godot --path .
 ```
 
-Move the active ingredient with **A/D**, the **left/right arrows**, or the mouse. Drop it with **Space** or a left click.
-
-## Tower math
-
-All ingredients have equal mass. After each landing, the game stores that ingredient’s signed horizontal offset from the active centerline. The bending module computes the accumulated moment
-
-```text
-M = Σ(offset[i] × (i + 1))
-```
-
-where `i + 1` is the layer’s height leverage. The centerline at normalized height `t` moves by `clamp(0.026 × M, -86, 86) × t²`. Each ingredient is drawn at its stored relative offset from that shared curve, so the stack bends as one structure. Stability is `clamp(1 - |M| / (178 × layer_count), 0, 1)`; a run ends when it reaches 8%.
-
-The formulas live in `scripts/physics/tower_bending.gd` and can run without rendering or gameplay state.
+The next topping sweeps left and right automatically. Aim with the mouse or **A/D** / arrow keys; drop with **Space** or left click. Toppings collide with the stack, then settle in place. Each safe placement adds a point. The stack tips when supports are lost, and ingredient speed rises as the score grows. Press **STACK AGAIN** to restart.
 
 ## Project map
 
-- `scenes/`: main game and procedural ingredient scenes.
-- `scripts/physics/`: pure bending and stability calculations.
-- `scripts/gameplay/`: stacking, recipe progress, scoring, effects, and local records.
-- `scripts/ingredients/`: procedural ingredient illustrations.
-- `scripts/ui/`: main menu, gameplay HUD, and results screen.
-- `data/`: ingredient recipes and shared balance constants.
-- `tests/`: automated math and recipe-flow checks plus repeatable manual scenarios.
+- `scenes/`: main game and ingredient body.
+- `scripts/physics/stack_balance.gd`: deterministic support and center of mass checks.
+- `scripts/gameplay/`: round state, stacking, scoring, and local best score.
+- `scripts/ingredients/`: procedural cartoon ingredient illustrations.
+- `scripts/ui/`: menu, HUD, and results screen.
+- `data/`: shared game balance constants.
+- `tests/`: automated support and gameplay scenarios.
+
+The dough base is a single `StaticBody2D`. Dropped toppings use rigid body gravity and collision shapes sized to their visible pizza layers. After settling, they freeze in place to prevent random sliding; an unsafe stack releases the layers so the fall is visible.
 
 ## Tests
 
 Run from the project root:
 
 ```sh
-godot --headless --path . --script tests/test_tower_bending.gd
+godot --headless --path . --script tests/test_stack_balance.gd
 godot --headless --path . --script tests/test_game_flow.gd
 ```
 
+The tests cover balance and overhang calculations, the permanent base, automatic topping sequence, actual physics landings, scoring, speed increase, camera follow, collapse, and restart.
+
 ## Validation
 
-Validated with Godot 4.7 stable: editor import, headless project startup, 10 bending scenarios, and 5 recipe-flow scenarios pass. Windows and Web exports have not been built or tested.
+Godot is not installed in this execution environment, so engine import, headless tests, and visual playthrough could not be run here. Windows and Web exports have not been built or tested.
