@@ -181,7 +181,7 @@ func _spawn_active() -> void:
 func _spawn_height() -> float:
 	if landed.is_empty():
 		return BASE_Y - Balance.DROP_CLEARANCE
-	var top := landed.back()
+	var top: IngredientView = landed.back()
 	return top.position.y - Balance.DROP_CLEARANCE
 
 func _is_stack_unbalanced() -> bool:
